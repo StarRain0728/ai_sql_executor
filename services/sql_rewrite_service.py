@@ -1,3 +1,4 @@
+from typing import Union, Optional
 import sqlglot
 from sqlglot import expressions as exp
 
@@ -5,7 +6,7 @@ from sqlglot import expressions as exp
 def append_filters(
     sql: str,
     dialect: str,
-    filters: list[tuple[str, str | int | float]],
+    filters: list[tuple[str, Union[str, int, float]]],
 ) -> str:
     try:
         parsed = sqlglot.parse_one(sql, read=dialect)
@@ -56,7 +57,7 @@ def _get_top_level_select(parsed: exp.Expression) -> exp.Select | None:
     return None
 
 
-def _build_column(column_name: str, table_name: str | None) -> exp.Column:
+def _build_column(column_name: str, table_name: Optional[str]) -> exp.Column:
     if table_name:
         return exp.Column(
             this=exp.Identifier(this=column_name),
@@ -65,7 +66,7 @@ def _build_column(column_name: str, table_name: str | None) -> exp.Column:
     return exp.Column(this=exp.Identifier(this=column_name))
 
 
-def _resolve_first_table_name(select_expr: exp.Select) -> str | None:
+def _resolve_first_table_name(select_expr: exp.Select) -> Optional[str]:
     from_expr = select_expr.args.get("from")
     if not isinstance(from_expr, exp.From):
         return None

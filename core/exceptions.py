@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -12,7 +12,7 @@ class AppError(Exception):
         message: str,
         code: str,
         status_code: str,
-        details: dict[str, Any] | None = None,
+        details: Optional[dict[str, Any]] = None,
     ) -> None:
         super().__init__(message)
         self.message = message

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def permission_check(user_info: UserInfo, white_list: str) -> bool:
-    logger.info(msg="白名单校验: 白名单: %s, 用户信息: %s", *(white_list, user_info))
+    logger.info("白名单校验: 白名单: %s, 用户信息: %s", white_list, user_info)
     if not user_info or not white_list:
         return False
     user_name = user_info.user_name
@@ -36,8 +36,8 @@ def _save_user_context(query_param: BaseRequest):
 @sql_router.post(path="/query", response_model=QueryResponse)
 def execute_sql(query_param: QueryRequest, service=Depends(get_sql_execution_service)) -> QueryResponse:
 
-    logger.info(msg="待执行SQL: %s", *(query_param.sql))
-    logger.info(msg="数据源: %s", *(query_param.datasource_name))
+    logger.info("待执行SQL: %s", query_param.sql)
+    logger.info("数据源: %s", query_param.datasource_name)
     _save_user_context(query_param)
     data = service.execute_sql(
         SqlExecuteParam(
@@ -47,7 +47,8 @@ def execute_sql(query_param: QueryRequest, service=Depends(get_sql_execution_ser
             strict_mode=query_param.strict_mode,
             max_limit=query_param.max_limit,
             shrink_limit=query_param.shrink_limit,
-            datasource_name=query_param.datasource_name
+            datasource_name=query_param.datasource_name,
+            skip_permission=bool(query_param.skip_permission)
         )
     )
     return QueryResponse(
@@ -61,8 +62,8 @@ def execute_sql(query_param: QueryRequest, service=Depends(get_sql_execution_ser
 
 @sql_router.post(path="/tables/samples", response_model=TableSamplesResponse)
 def get_samples(query_param: TableSamplesRequest, service=Depends(get_sql_execution_service)) -> TableSamplesResponse:
-    logger.info(msg="待获取示例数据表: %s", *(query_param.table_info))
-    logger.info(msg="数据源: %s", *(query_param.datasource_name))
+    logger.info("待获取示例数据表: %s", query_param.table_info)
+    logger.info("数据源: %s", query_param.datasource_name)
     _save_user_context(query_param)
     return TableSamplesResponse(samples=service.get_data_samples(GetSamplesParam(
         table_info=query_param.table_info,
@@ -74,7 +75,7 @@ def get_samples(query_param: TableSamplesRequest, service=Depends(get_sql_execut
 
 @sql_router.post(path="/query_test", response_model=QueryResponse)
 def test_query(query_param: QueryTestRequest, service=Depends(get_sql_execution_service)) -> QueryResponse:
-    logger.info(msg="待执行SQL: %s", *(query_param.sql))
+    logger.info("待执行SQL: %s", query_param.sql)
     _save_user_context(query_param)
 
     data = service.execute_sql(

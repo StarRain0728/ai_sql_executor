@@ -16,7 +16,7 @@ class DatabaseClientFactory:
 
     @classmethod
     def get_client(cls, datasource_config: DatasourceConfig) -> DatabaseClient:
-        ds_name = datasource_config.datasource
+        ds_name = datasource_config.datasource_name
         with cls._lock:
             if ds_name not in cls._clients:
                 if datasource_config.datasource_type == DatasourceType.MYSQL:
@@ -24,7 +24,7 @@ class DatabaseClientFactory:
                 elif datasource_config.datasource_type == DatasourceType.CLICKHOUSE:
                     cls._clients[ds_name] = ClickHouseClient(datasource_config)
                 else:
-                    logger.error(msg="不支持的数据源类型:%s", *(datasource_config.datasource))
+                    logger.error("不支持的数据源类型:%s", datasource_config.datasource_type)
                     raise DatasourceTypeNotSupportedError(datasource_config.datasource_type)
             return cls._clients[ds_name]
 

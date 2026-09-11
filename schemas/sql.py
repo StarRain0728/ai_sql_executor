@@ -13,6 +13,8 @@ class QueryRequest(BaseRequest):
     datasource_name: str
     strict_mode: Optional[bool] = True
     shrink_limit: Optional[int] = 10000
+    # 系统旁路：元数据管理采集 information_schema 时跳过表级权限校验，默认关闭
+    skip_permission: Optional[bool] = False
 
 
 class QueryTestRequest(BaseRequest):
@@ -21,7 +23,7 @@ class QueryTestRequest(BaseRequest):
 
 class QueryResponse(BaseResponse):
     sql: str
-    data: SqlExecutionResult | None
+    data: Optional[SqlExecutionResult] = None
 
 
 class TableSamplesRequest(BaseRequest):

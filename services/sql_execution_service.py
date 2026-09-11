@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from clients.factory import DatabaseClientFactory
@@ -33,9 +34,9 @@ class SqlExecutionService:
 
     def execute_sql(self, sql_execute_param: SqlExecuteParam) -> SqlExecutionResult:
         success = False
-        error_message: str | None = ""
-        result: SqlExecutionResult | None = None
-        datasource_config: DatasourceConfig | None = None
+        error_message: Optional[str] = ""
+        result: Optional[SqlExecutionResult] = None
+        datasource_config: Optional[DatasourceConfig] = None
         start_time = time.perf_counter()
         tables_columns: list[TableInfo] = []
         sql = sql_execute_param.sql
@@ -61,7 +62,8 @@ class SqlExecutionService:
             self._sql_permission_service.permission_check(sql=sql, user_code=sql_execute_param.user_code,
                                                           dept_id=sql_execute_param.dept_id,
                                                           datasource_id=datasource_config.id,
-                                                          ref_table_columns=tables_columns)
+                                                          ref_table_columns=tables_columns,
+                                                          skip_permission=sql_execute_param.skip_permission)
 
             # 获取执行器
             executor = self._executor_factory.create(datasource_config.datasource_type, client)
@@ -114,7 +116,7 @@ class SqlExecutionService:
     def _persist_exec_log(self, datasource_id: str,
                           sql: str,
                           result_preview: list[dict],
-                          error_msg: str | None,
+                          error_msg: Optional[str],
                           success: str,
                           user_id: str,
                           tables_columns: list[TableInfo],

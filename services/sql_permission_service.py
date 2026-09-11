@@ -11,8 +11,10 @@ class SqlPermissionService:
         self._permission_repository = repository
 
     def permission_check(self, dept_id: str, user_code: str, datasource_id: str, sql: str,
-                         ref_table_columns: list[TableInfo]) -> None:
+                         ref_table_columns: list[TableInfo], skip_permission: bool = False) -> None:
         settings = get_settings()
+        if skip_permission:
+            return
         if not settings.check_table_permission:
             return
         table_names = self._extract_table_names(ref_table_columns)

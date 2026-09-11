@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from api.log.config import setup_logger
+from api.log_config import setup_logger
 from clients.factory import DatabaseClientFactory
 from core.exceptions import register_exceptions_handlers
 
@@ -15,6 +15,11 @@ def create_app() -> FastAPI:
     app = FastAPI(title="SQL EXECUTOR API", version="0.0.1", lifespan=lifespan)
     app_logger = setup_logger()
     app.state.logger = app_logger
+
+    @app.get("/")
+    def root():
+        return {"message": "SQL EXECUTOR API", "docs": "/docs"}
+
     from api.routes.sql import sql_router
     app.include_router(sql_router)
     from api.middleware import logging_middleware, context_middleware

@@ -10,7 +10,7 @@ from core.exceptions import SqlValidationError, AppError
 from models.model import TableInfo, ColumnInfo
 import logging
 
-from utils.json_util import to_json_default
+from utils.json_utils import to_json_default
 
 logger = logging.getLogger(__name__)
 
