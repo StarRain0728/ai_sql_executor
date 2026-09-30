@@ -68,7 +68,7 @@ def resolve_special(value, param_name):
     elif value.startswith(TODAY_ZERO):
         return format_date(deal_hour(value[len(TODAY_ZERO):]), custom_format)
     elif value.startswith(NC_TODAY_ZERO):
-        return format_date(deal_hour(value[len(TODAY_ZERO):]) - timedelta(seconds=1), custom_format)
+        return format_date(deal_hour(value[len(NC_TODAY_ZERO):]) - timedelta(seconds=1), custom_format)
     else:
         return value
 

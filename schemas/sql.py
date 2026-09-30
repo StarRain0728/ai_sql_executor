@@ -15,6 +15,8 @@ class QueryRequest(BaseRequest):
     shrink_limit: Optional[int] = 10000
     # 系统旁路：元数据管理采集 information_schema 时跳过表级权限校验，默认关闭
     skip_permission: Optional[bool] = False
+    # 参数化执行（问数编译器产出的 ? 占位符对应值）：值永不拼接进 SQL 文本
+    params: Optional[list] = None
 
 
 class QueryTestRequest(BaseRequest):

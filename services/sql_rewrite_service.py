@@ -67,7 +67,8 @@ def _build_column(column_name: str, table_name: Optional[str]) -> exp.Column:
 
 
 def _resolve_first_table_name(select_expr: exp.Select) -> Optional[str]:
-    from_expr = select_expr.args.get("from")
+    # sqlglot>=30 将 Select 的 from 参数键重命名为 from_，此处兼容两种键名
+    from_expr = select_expr.args.get("from") or select_expr.args.get("from_")
     if not isinstance(from_expr, exp.From):
         return None
 

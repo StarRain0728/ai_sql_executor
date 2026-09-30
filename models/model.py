@@ -54,6 +54,8 @@ class SqlExecuteParam:
     user_code: str = ""
     dept_id: str = ""
     skip_permission: bool = False
+    # 参数化执行值（与 SQL 中 ? 占位符按序对应），默认空走原有文本执行
+    params: list = field(default_factory=list)
 
 
 @dataclass
@@ -80,7 +82,10 @@ class TableRuleInfo:
     id: str = ""
     datasource_id: str = ""
     table_id: str = ""
+    # 表名与规则条件（repository 构造 / rule_param_resolve 消费使用的字段名）
+    table_name: str = ""
     rule_name: str = ""
     rule_condition: str = ""
+    condition: str = ""
     rule_description: str = ""
     create_user: str = ""

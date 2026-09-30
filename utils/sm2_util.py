@@ -12,5 +12,18 @@ class SM2Util:
         return bytes.fromhex(data)
 
     def decrypt(self, data: str):
-        raw = self._decode_input(data)
-        return self.sm2_crypto.decrypt(raw).decode()
+        """解密 SM2 hex 密文。
+
+        边界容错：空密码（本地无密码数据源）或历史明文/脏数据不是有效密文，
+        解密失败时原样返回，与元数据侧 decrypt_password 行为一致。
+        """
+        if not data:
+            return data or ""
+        try:
+            raw = self._decode_input(data)
+            plain = self.sm2_crypto.decrypt(raw)
+            if not plain:
+                return data
+            return plain.decode()
+        except Exception:
+            return data

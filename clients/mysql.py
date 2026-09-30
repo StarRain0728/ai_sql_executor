@@ -28,9 +28,28 @@ class MySQLClient(DatabaseClient):
             future=True
         )
 
-    def execute(self, sql: str) -> tuple[list[str], list[dict[str, Any]]]:
+    def execute(self, sql: str, params: list | None = None) -> tuple[list[str], list[dict[str, Any]]]:
+        """执行 SQL；params 非空时按 ? 占位符顺序做参数绑定（值永不进 SQL 文本）。
+
+        实现方式：? 依序替换为 SQLAlchemy text() 命名参数 :p0/:p1...，绑定执行。
+        """
         with self.engine.connect() as connection:
-            result = connection.execute(text(sql))
+            bind_params: dict[str, Any] = {}
+            bound_sql = sql
+            if params:
+                def _to_named(sql_text: str) -> str:
+                    out, idx = [], 0
+                    for ch in sql_text:
+                        if ch == "?":
+                            out.append(f":p{idx}")
+                            idx += 1
+                        else:
+                            out.append(ch)
+                    return "".join(out)
+
+                bound_sql = _to_named(sql)
+                bind_params = {f"p{i}": v for i, v in enumerate(params)}
+            result = connection.execute(text(bound_sql), bind_params)
             connection.commit()
             if result.returns_rows:
                 columns = list[str](result.keys())

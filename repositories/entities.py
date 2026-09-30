@@ -35,7 +35,7 @@ class SqlExecLogEntity(Base):
     sql_text: Mapped[str] = mapped_column(Text)
     is_success: Mapped[str] = mapped_column(String(1))
     error_msg: Mapped[str] = mapped_column(String(255))
-    sql_api_cost_ms: Mapped[int] = mapped_column(Integer)
+    sql_api_cos_ms: Mapped[int] = mapped_column(Integer)
     ref_tables_columns: Mapped[str] = mapped_column(Text)
     user_code: Mapped[str] = mapped_column(String(128))
     result_preview: Mapped[str] = mapped_column(Text)

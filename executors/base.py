@@ -19,16 +19,16 @@ class SqlExecutor(ABC):
     def dialect(self) -> str:
         return self._client.datasource_config.datasource_type
 
-    def execute(self, sql: str) -> SqlExecutionResult:
+    def execute(self, sql: str, params: list | None = None) -> SqlExecutionResult:
         try:
-            return self._do_execute(sql)
+            return self._do_execute(sql, params)
         except Exception as e:
             logger.error("sql %s 执行失败: %s", sql, e)
             raise SqlExecutionError(sql, str(e))
 
     @abstractmethod
-    def _do_execute(self, sql: str) -> SqlExecutionResult:
-        """run sql"""
+    def _do_execute(self, sql: str, params: list | None = None) -> SqlExecutionResult:
+        """run sql；params 非空时按 ? 占位符顺序参数绑定"""
 
 
 if __name__ == '__main__':

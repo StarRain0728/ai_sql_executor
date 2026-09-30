@@ -16,7 +16,8 @@ async def logging_middleware(request: Request, call_next: RequestResponseEndpoin
 
     body = await request.body()
 
-    logger.info(f"[REQ]{request.method} {request.url} header={request.headers} body={body.decode(errors='ignore')}")
+    # 只记录请求头名，不落原始值：Authorization/Cookie 等凭据一旦写入日志即造成信息泄露
+    logger.info(f"[REQ]{request.method} {request.url} headers={list(request.headers.keys())} body={body.decode(errors='ignore')}")
     response = await call_next(request)
 
     cost = time.time() - start_time

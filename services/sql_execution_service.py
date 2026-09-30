@@ -2,8 +2,9 @@ import time
 from typing import Optional
 from sqlalchemy.orm import Session
 
+import sqlglot
 from clients.factory import DatabaseClientFactory
-from core.exceptions import AppError, AppSystemError
+from core.exceptions import AppError, AppSystemError, SqlValidationError
 from models.model import SqlExecutionResult, DatasourceConfig, SqlExecutionLogRecord, TableInfo, GetSamplesParam, \
     SqlExecuteParam
 from executors.factory import SqlExecutorFactory
@@ -67,8 +68,9 @@ class SqlExecutionService:
 
             # 获取执行器
             executor = self._executor_factory.create(datasource_config.datasource_type, client)
-            # 执行结果
-            result: SqlExecutionResult = executor.execute(sql)
+            # 执行结果（params 非空时按 ? 占位符参数绑定：审核/行级规则改写作用于占位符版 SQL，
+            # 真实值只在驱动层绑定，杜绝拼接注入）
+            result: SqlExecutionResult = executor.execute(sql, sql_execute_param.params or None)
             # 缩小返回结果
             self._shrink_rows(parser, result, shrink_limit=sql_execute_param.shrink_limit)
             # 执行完成
@@ -78,7 +80,7 @@ class SqlExecutionService:
             error_message = str(app_error.message)
             raise app_error
         except Exception as exc:
-            logger.error("执行sql系统异常", exc)
+            logger.error("执行sql系统异常: %s", exc)
             error_message = str(exc)
             raise AppSystemError() from exc
         finally:
@@ -100,8 +102,12 @@ class SqlExecutionService:
         executor = self._executor_factory.create(datasource_config.datasource_type, client)
         samples = {}
         for table_name, order_by in get_samples_param.table_info.items():
-            exp.to_table(table_name, dialect=datasource_config.datasource_type)
-            query_node = exp.Select().select("*").from_(table_name)
+            # 表名必须是纯表标识符：into=exp.Table 可拦截 `(select * from 敏感表) x`、`t where 1=1` 等注入片段
+            try:
+                table_expr = sqlglot.parse_one(table_name, read=datasource_config.datasource_type, into=exp.Table)
+            except Exception as exc:
+                raise SqlValidationError(sql=table_name, reason=f"非法的表名: {table_name}") from exc
+            query_node = exp.Select().select("*").from_(table_expr)
             query_node = query_node.order_by(exp.Ordered(this=exp.column(order_by))) if order_by else query_node
             query_node = query_node.limit(get_samples_param.max_limit)
             sql = query_node.sql(dialect=datasource_config.datasource_type)

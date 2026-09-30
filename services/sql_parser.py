@@ -71,15 +71,35 @@ class SqlParser:
             if not isinstance(outer, (exp.Select, exp.Union, exp.Intersect, exp.Except)):
                 logger.error("%s is not a select statement", self._sql)
                 raise SqlValidationError(self._sql, reason="禁止执行的sql语句")
+
+            # 拒绝表函数（url/file/s3/mysql/remote/numbers 等）作为数据来源。
+            self._reject_table_functions()
         except AppError as ax:
             raise ax
         except Exception as exc:
             # 捕获并记录解析过程中出现的异常
-            logger.error("SQL 校验失败: %s", self._sql, exc)
+            logger.error("SQL 校验失败: %s, 原因: %s", self._sql, exc)
             raise SqlValidationError(self._sql, str(exc))
 
         # 返回SqlParser对象自身，支持链式调用
         return self
+
+    def _reject_table_functions(self) -> None:
+        """
+        拒绝以表函数作为数据来源。
+
+        ClickHouse 的 url()/file()/s3()/mysql()/remote()/numbers() 等表函数在 AST 中
+        表现为 Table 节点，但其 this 不是 Identifier（普通表、库表、CTE 引用均为 Identifier）。
+        这类表函数绕过数据源配置与表级权限校验，可造成 SSRF、任意文件读取、内网探测等风险，
+        因此在此统一拦截。
+        """
+        for table_node in self._tree.find_all(exp.Table):
+            if not isinstance(table_node.this, exp.Identifier):
+                logger.error("检测到非法表函数: %s", table_node.sql(dialect=self._dialect))
+                raise SqlValidationError(
+                    self._sql,
+                    reason=f"禁止使用表函数: {table_node.sql(dialect=self._dialect)}",
+                )
 
     def add_limit(self, max_limit: int) -> SqlParser:
         """
@@ -249,7 +269,7 @@ class SqlParser:
 
             # 检查累计长度是否达到限制
             if total_len + record_len > shrink_limit:
-                logger.info("截止第%d条, token已达到限制:%s", i)
+                logger.info("截止第%d条, token已达到限制", i)
                 break
 
             # 添加记录到结果列表，并更新总长度
@@ -321,17 +341,35 @@ class SqlParser:
         - table_rules: 包含表名及其对应规则的字典。
         """
         # 获取选择节点中的FROM子句
-        from_clause = select_node.args.get("from")
+        # sqlglot>=30 将 Select 的 from 参数键重命名为 from_，此处兼容两种键名
+        from_clause = select_node.args.get("from") or select_node.args.get("from_")
         # 如果没有FROM子句，则直接返回
         if not from_clause:
             return
 
-        # 提取FROM子句中的表节点
-        table_node = from_clause.this
-        # 如果表节点不是期望的Table类型，则直接返回
-        if not isinstance(table_node, exp.Table):
-            return
+        # 收集参与查询的所有表：FROM 主表 + JOIN 从表。
+        # 只处理 FROM 主表会让 `from 允许表 join 受限表` 绕过行级过滤规则，造成越权数据泄露。
+        table_nodes = [from_clause.this]
+        for join_node in select_node.args.get("joins") or []:
+            if isinstance(join_node, exp.Join):
+                table_nodes.append(join_node.this)
 
+        applied_candidates = set()
+        for table_node in table_nodes:
+            # 子查询等非表节点由其内部 Select 自行处理
+            if not isinstance(table_node, exp.Table):
+                continue
+            matched_candidate = self._match_table_rules(table_node, table_rules)
+            # 自连接等同名表只追加一次，避免重复条件
+            if not matched_candidate or matched_candidate in applied_candidates:
+                continue
+            applied_candidates.add(matched_candidate)
+            # 调用内部方法，根据匹配的规则追加条件到选择节点
+            self._append_conditions(select_node, matched_candidate, table_rules[matched_candidate])
+
+    @staticmethod
+    def _match_table_rules(table_node: exp.Table, table_rules: dict[str, list[str]]) -> str | None:
+        """按表名匹配规则，返回命中的候选表标识。"""
         # 分别获取表的名称、数据库名和目录名
         name = table_node.name or ""
         db = table_node.db or ""
@@ -347,22 +385,11 @@ class SqlParser:
         if name:
             candidates.append(name.lower())
 
-        # 初始化匹配的规则和候选标识符
-        matched_rules = None
-        matched_candidate = None
         # 遍历候选列表，寻找匹配的表规则
         for candidate in candidates:
             if candidate in table_rules:
-                matched_rules = table_rules[candidate]
-                matched_candidate = candidate
-                break
-
-        # 如果没有找到匹配的规则，则直接返回
-        if not matched_rules:
-            return
-
-        # 调用内部方法，根据匹配的规则追加条件到选择节点
-        self._append_conditions(select_node, matched_candidate, matched_rules)
+                return candidate
+        return None
 
     def _append_conditions(self, select_node: exp.Select, table_name: str, condition_strings: list[str]) -> None:
         if not condition_strings:

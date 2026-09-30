@@ -25,12 +25,16 @@ def permission_check(user_info: UserInfo, white_list: str) -> bool:
 
 
 def _save_user_context(query_param: BaseRequest):
-    if query_param.user_info:
-        set_user_context(UserContext(user_code=query_param.user_info.user_code,
-                                     user_dept_id=query_param.user_info.dept_id,
-                                     user_dept_name=query_param.user_info.dept_name,
-                                     user_name=query_param.user_info.user_name,
+    user_info = query_param.user_info
+    if user_info:
+        set_user_context(UserContext(user_code=user_info.user_code,
+                                     user_dept_id=user_info.dept_id,
+                                     user_dept_name=user_info.dept_name,
+                                     user_name=user_info.user_name,
                                      ))
+    else:
+        # user_info 为可选字段：缺失时兜底为空上下文，避免 get_user_code() 取上下文直接抛 500
+        set_user_context(UserContext(user_code=""))
 
 
 @sql_router.post(path="/query", response_model=QueryResponse)
@@ -48,7 +52,8 @@ def execute_sql(query_param: QueryRequest, service=Depends(get_sql_execution_ser
             max_limit=query_param.max_limit,
             shrink_limit=query_param.shrink_limit,
             datasource_name=query_param.datasource_name,
-            skip_permission=bool(query_param.skip_permission)
+            skip_permission=bool(query_param.skip_permission),
+            params=query_param.params or []
         )
     )
     return QueryResponse(
@@ -68,7 +73,6 @@ def get_samples(query_param: TableSamplesRequest, service=Depends(get_sql_execut
     return TableSamplesResponse(samples=service.get_data_samples(GetSamplesParam(
         table_info=query_param.table_info,
         datasource_name=query_param.datasource_name,
-        order_by=query_param.order_by,
         max_limit=query_param.n
     )))
 

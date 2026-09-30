@@ -21,8 +21,9 @@ class ClickHouseClient(DatabaseClient):
             connect_timeout=120,
         )
 
-    def execute(self, sql: str) -> tuple[list[str], list[dict[str, Any]]]:
-        result = self._client.query(sql)
+    def execute(self, sql: str, params: list | None = None) -> tuple[list[str], list[dict[str, Any]]]:
+        # clickhouse_connect 原生支持 parameters（? 占位符）：值在驱动层绑定，不拼接文本
+        result = self._client.query(sql, parameters=params) if params else self._client.query(sql)
         rows: list[dict[str, Any]] = []
         for row in result.result_rows:
             item: dict[str, Any] = {}
@@ -31,7 +32,7 @@ class ClickHouseClient(DatabaseClient):
                     break
                 item[col] = row[idx]
             rows.append(item)
-        logger.info(msg="sql 执行结果: %s", *rows)
+        logger.info("sql 执行完成，返回 %d 行", len(rows))
         return list[Any](result.column_names), rows
 
     def close(self) -> None:
