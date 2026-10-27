@@ -22,6 +22,10 @@ class SqlParser:
         self._tree = None
         self._ref_table_columns: list[TableInfo] = []
         self._shrink_record_result = []
+        # WITH 定义的 CTE 名集合（小写，含嵌套/递归 CTE）：
+        # CTE 引用在 AST 中同样是 exp.Table 节点，血缘收集与行级规则注入必须剔除，
+        # 否则 CTE 名会被当成物理表参与表级权限校验（用户未授权即误报 101）。
+        self._cte_names: set[str] = set()
 
     @property
     def sql(self):
@@ -54,6 +58,11 @@ class SqlParser:
         try:
             # 使用sqlglot库解析SQL语句
             self._tree = sqlglot.parse_one(self._sql, read=self._dialect)
+
+            # 收集 CTE 名（find_all 覆盖嵌套 CTE；递归 CTE 的自引用同样按名剔除）
+            self._cte_names = {
+                str(cte.alias).lower() for cte in self._tree.find_all(exp.CTE) if cte.alias
+            }
 
             # 在严格模式下检查是否存在分号，存在则表示尝试执行多条SQL语句
             if strict_mode and ";" in self._sql:
@@ -135,6 +144,20 @@ class SqlParser:
 
         return self
 
+    def _is_cte_reference(self, node: exp.Table) -> bool:
+        """判定 Table 节点是否为 CTE 引用而非物理表。
+
+        CTE 引用不可带库名/目录限定（MySQL 语义），带限定（如 db.b）的一定是物理表；
+        无限定且名字命中 WITH 定义的 CTE 名集合即为 CTE 引用。
+        CTE 名遮蔽同名物理表时，FROM 该名字引用的是 CTE 而非物理表，剔除语义正确。
+        """
+        if not isinstance(node, exp.Table):
+            return False
+        if node.db or node.catalog:
+            return False
+        name = node.name if isinstance(node.name, str) else ""
+        return bool(name) and name.lower() in self._cte_names
+
     def parse_lineage(self) -> SqlParser:
         """
         解析SQL语句中的表和列信息，建立表别名和列别名的映射关系，并整理这些信息以便后续处理。
@@ -148,6 +171,8 @@ class SqlParser:
         table_alias_mapping: dict[str, str] = {}
         # 初始化列别名映射字典，用于存储列别名信息
         columns_alias_mapping = {}
+        # CTE 引用的名字与别名（小写）：列归属解析时同样剔除，避免为 CTE 建伪表项
+        cte_qualifiers: set[str] = set()
 
         # 遍历AST树中的所有表节点，收集表信息
         for node in self._tree.find_all(exp.Table):
@@ -155,6 +180,12 @@ class SqlParser:
                 # 提取表名和别名，确保它们是字符串类型
                 name = node.name if isinstance(node.name, str) and node.name else ""
                 alias = node.alias if isinstance(node.alias, str) and node.alias else ""
+                # CTE 引用不是物理表：不进血缘（权限校验/执行日志只看物理表）
+                if self._is_cte_reference(node):
+                    cte_qualifiers.add(name.lower())
+                    if alias:
+                        cte_qualifiers.add(alias.lower())
+                    continue
                 # 在表信息字典中设置表名对应的默认值
                 table_entries.setdefault(
                     name,
@@ -182,6 +213,9 @@ class SqlParser:
                 # 提取表名，确保它是字符串类型，并通过表别名映射字典找到实际的表名
                 table = col.table if isinstance(col.table, str) and col.table else ""
                 table_name = table_alias_mapping.get(table, table)
+                # CTE 限定列不归属任何物理表，跳过
+                if table_name and table_name.lower() in cte_qualifiers:
+                    continue
                 # 提取列别名
                 col_alias = node.alias if isinstance(node.alias, str) else ""
 
@@ -200,6 +234,10 @@ class SqlParser:
 
             table = node.table if isinstance(node.table, str) and node.table else ""
             table_name = table_alias_mapping.get(table, table)
+
+            # CTE 限定列不归属任何物理表，跳过
+            if table_name and table_name.lower() in cte_qualifiers:
+                continue
 
             table_entry = table_entries.setdefault(
                 table_name,
@@ -358,6 +396,11 @@ class SqlParser:
         for table_node in table_nodes:
             # 子查询等非表节点由其内部 Select 自行处理
             if not isinstance(table_node, exp.Table):
+                continue
+            # CTE 引用不参与行级规则注入：受限物理表的规则由 CTE 体内读该表的
+            # Select 自行命中（find_all(exp.Select) 覆盖 CTE 体），在外层注入反而
+            # 会引用 CTE 输出中不存在的列（1054）或规则空转
+            if self._is_cte_reference(table_node):
                 continue
             matched_candidate = self._match_table_rules(table_node, table_rules)
             # 自连接等同名表只追加一次，避免重复条件
