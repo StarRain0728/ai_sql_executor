@@ -1,6 +1,9 @@
 """执行器单元测试：MySQL / ClickHouse 结果装配一致性。"""
+from types import SimpleNamespace
+
 import pytest
 
+from clients import clickhouse as clickhouse_module
 from executors.clickhouse import ClickHouseExecutor
 from executors.mysql import MySQLExecutor
 
@@ -44,3 +47,24 @@ class TestClickHouseExecutor:
     def test_empty_result(self):
         result = ClickHouseExecutor(_FakeClient([], [])).execute("select 1")
         assert result.row_count == 0
+
+
+class TestClickHouseClient:
+    def test_disable_autogenerate_session_id(self, monkeypatch):
+        """回归用例：client 按数据源缓存、被并发请求共用。
+
+        clickhouse_connect 默认自动生成 session_id，同一 client 上并发执行会抛
+        "Attempt to execute concurrent queries within the same session"，
+        必须显式关闭自动生成。
+        """
+        captured = {}
+
+        def _fake_get_client(**kwargs):
+            captured.update(kwargs)
+            return object()
+
+        monkeypatch.setattr(clickhouse_module.clickhouse_connect, "get_client", _fake_get_client)
+        config = SimpleNamespace(host="h", port=8123, username="u", password="p", database="db")
+        clickhouse_module.ClickHouseClient(config)
+
+        assert captured["autogenerate_session_id"] is False
